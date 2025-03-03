@@ -64,3 +64,103 @@ SELECT
   ) AS churn_percentage
 FROM 
   trial_customers tc;
+
+--6. What is the number and percentage of customer plans after their initial free trial?
+    
+WITH trial_customers AS (
+  SELECT 
+    plan_id, 
+    COUNT(*) AS total_per_plan
+  FROM subscriptions
+  WHERE plan_id != 0
+  GROUP BY plan_id)
+  
+SELECT 
+  s.plan_id, 
+  tc.total_per_plan,
+  ROUND((tc.total_per_plan * 100.0 / (SELECT COUNT(*) FROM subscriptions WHERE plan_id != 0)), 2) AS percentage
+FROM subscriptions s
+JOIN trial_customers tc
+  ON s.plan_id = tc.plan_id
+GROUP BY s.plan_id, tc.total_per_plan
+ORDER BY s.plan_id;
+
+--7. What is the customer count and percentage breakdown of all 5 plan_name values at 2020-12-31?
+
+WITH breakdown AS (
+  SELECT 
+    plan_id, 
+    COUNT(*) AS total_per_plan
+  FROM subscriptions
+  WHERE start_date>'2020-12-31'
+  GROUP BY plan_id)
+  
+SELECT 
+  p.plan_name, s.plan_id, 
+  b.total_per_plan,
+  ROUND((b.total_per_plan * 100.0 / (SELECT COUNT(*) FROM subscriptions WHERE start_date>'2020-12-31')), 2) AS percentage
+FROM subscriptions s
+JOIN breakdown b
+  ON s.plan_id = b.plan_id
+JOIN plans p
+  ON p.plan_id = s.plan_id
+GROUP BY p.plan_name, s.plan_id, b.total_per_plan
+ORDER BY s.plan_id;
+
+--8. How many customers have upgraded to an annual plan in 2020?
+
+WITH trial_customers AS (
+  SELECT 
+    customer_id, 
+    plan_id, 
+    start_date, 
+    ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY start_date) AS orderr
+  FROM 
+    subscriptions)
+    
+ SELECT COUNT(*)
+ FROM trial_customers
+ WHERE orderr > 1 AND plan_id = 3 AND (start_date BETWEEN '2020-01-01' AND '2020-12-31');
+
+--9. How many days on average does it take for a customer to an annual plan from the day they join Foodie-Fi?
+
+WITH start_trial AS (SELECT customer_id, CASE WHEN plan_id = 0 THEN start_date ELSE NULL END AS start_triall
+  FROM subscriptions),
+  
+start_annual AS (SELECT customer_id, CASE WHEN plan_id = 3 THEN start_date ELSE NULL END AS start_annuall
+  FROM subscriptions),
+  
+trial_annual AS (SELECT st.customer_id, st.start_triall, sa.start_annuall
+  FROM start_trial st
+  JOIN start_annual sa ON st.customer_id = sa.customer_id
+  WHERE st.start_triall IS NOT NULL AND sa.start_annuall IS NOT NULL),
+  
+number_of_days AS (SELECT customer_id, (start_annuall - start_triall) AS no_days
+FROM trial_annual)
+
+SELECT ROUND(AVG(no_days),2)
+FROM number_of_days;
+
+--10. Can you further breakdown this average value into 30 day periods (i.e. 0-30 days, 31-60 days etc)
+
+WITH start_trial AS (SELECT customer_id, CASE WHEN plan_id = 0 THEN start_date ELSE NULL END AS start_triall
+  FROM subscriptions),
+  
+start_annual AS (SELECT customer_id, CASE WHEN plan_id = 3 THEN start_date ELSE NULL END AS start_annuall
+  FROM subscriptions),
+  
+trial_annual AS (SELECT st.customer_id, st.start_triall, sa.start_annuall
+  FROM start_trial st
+  JOIN start_annual sa ON st.customer_id = sa.customer_id
+  WHERE st.start_triall IS NOT NULL AND sa.start_annuall IS NOT NULL),
+  
+number_of_days AS (SELECT customer_id, (start_annuall - start_triall) AS no_days
+FROM trial_annual)
+
+SELECT 
+  COUNT(CASE WHEN no_days BETWEEN 0 AND 100 THEN 1 END) AS zero_hundred,
+  COUNT(CASE WHEN no_days BETWEEN 101 AND 200 THEN 1 END) AS one_two,
+  COUNT(CASE WHEN no_days BETWEEN 201 AND 300 THEN 1 END) AS two_three,
+  COUNT(CASE WHEN no_days BETWEEN 301 AND 400 THEN 1 END) AS three_four
+FROM number_of_days;
+

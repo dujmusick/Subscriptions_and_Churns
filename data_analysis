@@ -164,3 +164,33 @@ SELECT
   COUNT(CASE WHEN no_days BETWEEN 301 AND 400 THEN 1 END) AS three_four
 FROM number_of_days;
 
+--11. How many customers downgraded from a pro monthly to a basic monthly plan in 2020?
+
+WITH trial_customers AS (
+  SELECT 
+    customer_id, 
+    plan_id, 
+    start_date, 
+    ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY start_date DESC) AS orderr
+  FROM 
+    subscriptions
+  WHERE 
+    plan_id = 1 OR plan_id = 2
+),
+downgrades AS (
+  SELECT 
+    t1.customer_id
+  FROM 
+    trial_customers t1
+  JOIN 
+    trial_customers t2 
+    ON t1.customer_id = t2.customer_id
+  WHERE 
+    t1.plan_id = 2
+    AND t2.plan_id = 1
+    AND t1.start_date < t2.start_date
+    AND t2.start_date BETWEEN '2020-01-01' AND '2020-12-31'
+)
+SELECT COUNT(DISTINCT customer_id) AS customers_downgraded
+FROM downgrades;
+
